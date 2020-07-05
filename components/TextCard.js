@@ -21,7 +21,7 @@ const s = StyleSheet.create({
     marginBottom: 20,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.2)",
   },
   textStyle: {
     fontFamily: "ConcertOne-Regular",

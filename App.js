@@ -9,6 +9,14 @@ import { createStackNavigator } from "@react-navigation/stack";
 import StackNavigator from "./navigation/StackNavigator";
 import MainStackNavigator from "./navigation/MainStackNavigator.js";
 import useLinking from "./navigation/useLinking";
+import FlashMessage from "react-native-flash-message";
+// Redux
+
+import { Provider } from "react-redux";
+import { createStore, applyMiddleware } from "redux";
+import ReduxThunk from "redux-thunk";
+
+import rootReducer from "./Redux/reducers/index";
 
 const Stack = createStackNavigator();
 
@@ -32,6 +40,9 @@ export default function App(props) {
           "Baloo-Bold": {
             uri: require("./assets/fonts/Baloo.ttf"),
           },
+          "Bacon-Normal": {
+            uri: require("./assets/fonts/Bacon-gBJ3.otf"),
+          },
           "ConcertOne-Regular": {
             uri: require("./assets/fonts/ConcertOne-Regular.ttf"),
           },
@@ -52,26 +63,32 @@ export default function App(props) {
     return null;
   } else {
     return (
-      <View style={styles.container}>
-        {Platform.OS === "ios" && <StatusBar barStyle="default" />}
-        <NavigationContainer
-          ref={containerRef}
-          initialState={initialNavigationState}
-        >
-          <Stack.Navigator>
-            <Stack.Screen
-              name="Authentication"
-              component={StackNavigator}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="Main"
-              component={MainStackNavigator}
-              options={{ headerShown: false }}
-            />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </View>
+      <Provider
+        store={createStore(rootReducer, {}, applyMiddleware(ReduxThunk))}
+      >
+        <View style={styles.container}>
+          {Platform.OS === "ios" && <StatusBar barStyle="default" />}
+          <NavigationContainer
+            ref={containerRef}
+            initialState={initialNavigationState}
+          >
+            <Stack.Navigator>
+              <Stack.Screen
+                name="Auth"
+                component={StackNavigator}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="Main"
+                component={MainStackNavigator}
+                options={{ headerShown: false }}
+              />
+            </Stack.Navigator>
+          </NavigationContainer>
+
+          <FlashMessage position="top" />
+        </View>
+      </Provider>
     );
   }
 }

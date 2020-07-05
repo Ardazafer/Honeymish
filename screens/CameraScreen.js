@@ -21,10 +21,8 @@ export default class CameraScreen extends Component {
   };
 
   _takeAPhoto = async () => {
-    console.log("basıyom amk");
     if (this.camera) {
       let photo = await this.camera.takePictureAsync();
-
       this.props.navigation.navigate("Game", { photo });
     }
   };
@@ -39,12 +37,17 @@ export default class CameraScreen extends Component {
             height: 60,
             position: "absolute",
             alignSelf: "center",
-            bottom: 30,
+            bottom: 100,
           }}
         >
           <CustomButton
             name="Take a Photo"
             onPress={() => this._takeAPhoto()}
+          />
+          <View style={{ height: 10 }} />
+          <CustomButton
+            name="Cancel"
+            onPress={() => this.props.navigation.goBack()}
           />
         </View>
       </View>
