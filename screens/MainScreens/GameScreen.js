@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { View, Text, Image } from "react-native";
+import { View, Text, Image, ActivityIndicator } from "react-native";
 import BG from "../../components/BG";
 import Header from "../../components/Header";
 import { ScrollView } from "react-native-gesture-handler";
@@ -9,198 +9,281 @@ import Colors from "../../constants/Colors";
 import { AntDesign } from "@expo/vector-icons";
 import ID from "../../helpers/ID";
 
-export default class GameScreen extends Component {
+import honeymishAPI from "../../API/honeymishAPI";
+import objToFormData from "../../helpers/objToFormData";
+
+import { connect } from "react-redux";
+import showFlashMessage from "../../helpers/showFlashMessage";
+import logoutUserAction from "../../Redux/actions/logoutUser";
+import { bindActionCreators } from "redux";
+
+class GameScreen extends Component {
   constructor() {
     super();
     this.state = {
       questionsArray: [],
-      score: 0,
-      isTfReady: false,
+      practiceScore: 0,
+      image: null,
+      myScore: 0,
+      opponentScore: 0,
     };
   }
 
-  async componentDidMount() {
-    await tf.ready();
-    this.setState({
-      isTfReady: true,
-    });
-    console.log(this.state.isTfReady);
-    this.getQuestion();
+  componentDidMount() {
+    const { online } = this.props.route.params;
+
+    if (online) {
+      const { room, socket, question, opponent } = this.props.route.params;
+      const { myScore, opponentScore } = this.state;
+
+      socket.emit("join", { name: "arda", room }, (error) => {
+        if (error) {
+          console.log(`Hata: ${error}`);
+
+          socket.emit("disconnect");
+          socket.off();
+          this.props.navigation.goBack();
+        }
+      });
+
+      socket.on("userLeft", () => {
+        this.props.navigation.navigate("Result", {
+          data: this.state,
+          win: 1,
+          online: true,
+          user: this.props.user,
+          opponent: opponent,
+          scores: [myScore, opponentScore],
+        });
+      });
+
+      socket.on("objectData", (data) => {
+        console.log("socket verisi geldi:", data);
+
+        this.updatePhotoResult(data);
+      });
+
+      socket.on("otherPersonsAnswer", (data) => {
+        console.log("diğer adamın cevabı geldi:", data);
+        this.receiveOpponentsAnswer(data);
+      });
+
+      // socketten soru bekle
+      // Get the first question in online mode
+      this.getQuestion(question);
+    } else {
+      // Get the first question in practice mode
+      this.getQuestion();
+    }
   }
 
-  componentWillReceiveProps(nextProps) {
+  componentWillUnmount() {
+    this.disconnect(true);
+  }
+
+  disconnect(ul) {
+    const { socket, online } = this.props.route.params;
+
+    if (online) {
+      console.log("çıktım ");
+      socket.emit("disconnect", { userLeft: ul });
+      socket.off();
+      socket.close();
+    }
+  }
+  UNSAFE_componentWillReceiveProps(nextProps) {
     const { params } = nextProps.route;
+    const { user } = this.props;
 
     if (params && params.photo) {
-      // burda image processing işlemini yapcaz lsdksldk photoyu aldık doğruluğuna bakcak şimdilik boş bir
-      // fonksiyon yapymo ldskfslfks
-      // o zaman ne vakti sdlfksdlfk sldkdslfk yapalım ama her şey saydam olunca bi garip olur sanki
-      // naptık olum o kazandın kaybettin muhabbeti bi 2 saa
+      const photoId = ID();
+      const { questionsArray } = this.state;
+      const currentQuestion = questionsArray[questionsArray.length - 1];
+      let formData;
+      if (params.online) {
+        formData = objToFormData({
+          objectPhoto: {
+            uri: params.photo.uri,
+            type: "image/jpg",
+            name: "object.jpg",
+          },
+          width: params.photo.width,
+          height: params.photo.height,
+          room: params.room,
+          photoId,
+          socketId: params.socket.id,
+          answers: JSON.stringify(currentQuestion.answers),
+          online: true,
+        });
+      } else {
+        formData = objToFormData({
+          objectPhoto: {
+            uri: params.photo.uri,
+            type: "image/jpg",
+            name: "object.jpg",
+          },
+          width: params.photo.width,
+          height: params.photo.height,
+          photoId,
+          answers: JSON.stringify(currentQuestion.answers),
+          online: false,
+        });
+      }
+      this.setState({ pending: true });
+      honeymishAPI
+        .processImage(formData)
+        .then((res) => {
+          console.log("Res Data:", res.data);
+          if (res.data.banned) {
+            this.props.logoutUser(
+              this.props.navigation.navigate,
+              res.data.banned
+            );
+          }
+          if (!params.online) {
+            this.updatePhotoResult(res.data);
+          }
+        })
+        .catch((err) => {
+          console.log("process image error");
+          console.log(err.response || err.data || err);
+        });
 
-      // yorumları silmiyorum lan lsdkfslfks okuruz sonra ldksflsdkf
-
-      this.processPhoto(params.photo);
+      this.createPhoto(params.photo, photoId);
     }
   }
 
-  processPhoto(photo) {
-    // ............. bitti mi ldsfkdslf olum imkansız ötesi amk dslkflskfsf gerçi benağ ödevi yaptım geçen ldskfldsfk server client filan biliyoruz bi şeyler ldskflsdkff
+  updatePhotoResult(data) {
+    const temporaryArray = [...this.state.questionsArray];
+    const currentQuestion = temporaryArray[temporaryArray.length - 1];
+    const currentAnswers = currentQuestion.userAnswers;
+
+    const currentAnswer = currentAnswers.find(
+      (answer) => answer.photoId === data.photoId
+    );
+
+    if (currentAnswer) {
+      currentAnswer.result = data.result;
+      currentQuestion.user = data.user;
+      if (data.result) {
+        const { online } = this.props.route.params;
+        const { user } = this.props;
+        if (online) {
+          if (data.question) {
+            // This means someone sent the correct answer
+
+            // Increase the user's point by one
+            if (data.user._id === user._id) {
+              // This means I got the correct answer
+              this.setState((state) => ({ myScore: state.myScore + 1 }));
+            } else {
+              // This means my opponent got the correct answer
+              this.setState((state) => ({
+                opponentScore: state.opponentScore + 1,
+              }));
+            }
+            this.getQuestion(data.question);
+          }
+        } else {
+          // Show flash message if the user breaks their record
+          if (this.state.practiceScore == user.practiceScoreRecord) {
+            showFlashMessage(
+              "Hooraayy!!",
+              "You broke your record, congratulations!"
+            );
+          }
+          // Increase the practice scroe by 1
+          this.setState((state) => ({
+            practiceScore: state.practiceScore + 1,
+          }));
+          // Get the next question in practice mode if the answer is correct
+          this.getQuestion();
+        }
+      }
+
+      this.setState({
+        pending: false,
+        questionsArray: temporaryArray,
+      });
+    }
+  }
+
+  receiveOpponentsAnswer(data) {
+    const temporaryArray = [...this.state.questionsArray];
+    const currentQuestion = temporaryArray[temporaryArray.length - 1];
+    const currentAnswers = currentQuestion.userAnswers;
+    console.log({ uri: data.photo, ...data.photoProps });
+    currentAnswers.push({
+      user: "opponent",
+      data: { uri: data.photo, ...data.photoProps },
+      photoId: data.photoId,
+      result: data.result,
+    });
+
+    this.setState({ questionsArray: temporaryArray });
+  }
+
+  createPhoto(photo, photoId) {
+    console.log("front enddeki photo id:", photoId);
     // image processing
 
-    const result = true; // Math.floor(Math.random() * 2);
-
-    if (result) {
-      this.setState((state) => ({ score: state.score + 1 }));
-      this.timer.reset();
-
-      setTimeout(() => {
-        this.getQuestion();
-        this.timer.decreaseTime();
-      }, 0);
-    }
+    const result = "processing"; // Math.floor(Math.random() * 2);
+    const { online } = this.props.route.params;
 
     let temporaryArray = [...this.state.questionsArray];
 
-    temporaryArray[temporaryArray.length - 1].answers.push({
-      user: null,
+    temporaryArray[temporaryArray.length - 1].userAnswers.push({
+      user: "me",
       data: photo,
       result,
+      photoId,
     });
 
     this.setState((state) => ({
       questionsArray: temporaryArray,
     }));
-
-    /*
-    this.setState((state) => ({
-      questionsArray: [
-        ...state.questionsArray,
-        { type: "photo", data: photo, result },
-      ], // bu result da doğru cevap mı yanlış mı onu tutuyorum processing işlemi sonucunda işte doğru çıkarsa result true dicem yanına tik mik çizeriz flase sa çarpı sonrada yeni soru
-    }));*/
   }
 
-  /**
-   *
-   * [
-   *   {
-   *     type: "question",
-   *     data: "Bu kısrmızı objeyi bul"
-   *   },
-   *   {
-   *     type: "photo",
-   *     data: "img",
-   *     result: true
-   *   },
-   *   {
-   *     type: "question",
-   *     data: "Bu kısrmızı objeyi bul"
-   *   },
-   *   {
-   *     type: "photo",
-   *     data: "img",
-   *     result: false
-   *   },{
-   *     type: "photo",
-   *     data: "img",
-   *     result: false
-   *   },{
-   *     type: "photo",
-   *     data: "img",
-   *     result: false
-   *   },{
-   *     type: "photo",
-   *     data: "img"
-   *     result: false
-   *   },
-   *
-   * ]
-   *
-   * [
-   *
-   *  {
-   *    type: "question",
-   *    data: "en yakın ç..",
-   *    answers: [
-   *              {
-   *                user: "1",
-   *                data: "img",
-   *                result: false
-   *              }
-   *             ]
-   *  },
-   * {
-   *    type: "question",
-   *    data: "en yakın ç..",
-   *    answers: [
-   *              {
-   *                user: "1",
-   *                data: "img",
-   *                result: false
-   *              }
-   *             ]
-   *  },
-   * {
-   *    type: "question",
-   *    data: "en yakın ç..",
-   *    answers: [
-   *              {
-   *                user: "1",
-   *                data: "img",
-   *                result: false
-   *              }
-   *             ]
-   *  }
-   * ]
-   *
-   *
-   */
-
-  // kaçt abşalayıp kanka cs survivor ldsfksldfk yarın kavga var kesin izlerim 12
-
-  // plan:
-  // arda uyandı: 15 - 16 kanka anca slkdsldkdsklf sklsşgjsflksjflskdfşjsd
-  // yok lan minecraft 1.5 saat
-  // youtube 4 saat sdkfsldfkdsfl az dedim olum naptın sldfksdf benim izlediğim 1 video 60 dk yok skdflksdlfdskf
-  // tamam yt - 4 saat
-  // saat oldu 21.5
-  // survivor 2 saat
-  // o zaman cs 2 saat okay aynen 3 olsun sldksld
-  // tez 2.00 - 3.5
-  // 11.5 da başlamam konsey var lsdkfsdlgkflg
-  // ne bi daha söyle
-  // olum keşke 11 de uyancaksan beni deuyandır lskdlsdk
-  // ara lan slkslgksdlskflsf
-  // hem de nasıl sdlfkdlfsdkfdsl kanka cs olmazsa gram düşünemem tezi ksklsdk aynen saat 7 olum baksanıza mis gibi yaptık ldsksdlfsdj
-  // sldfkslsdk gartic şart goy goy şart
-  // olur kanka ksdlfkdslfk yok be ben yazıvırıyom hemen sdlkfsldfks bana mı diyon
-  // ldfksdlfskdlgs ne düşünüyoz o zaman bakalım survivor ı salabiliriz harbiden cs yierkene çekeriz okay
-  // ha önce tez sonra cs mi atraız yauv
-  // ben uyanınca youtube dan izlerim lskdsldk o zaman yarın deneyelim yeni planı aynen evet olum sinir oluyom
-  // o zaman yarın 20 de filan mı başlasak haaa foğru 21-24 arası mı ama az işte o zaman yarın 21 kesin bi deneyelim bakalım ama bence 3 saataz gibi yarın için değil de
-  // yarın sensörü halleidn de sonra ama cs işte lskdslkgklsdk bunu bi gruptan konuşalım biz cs saatiini belileyeim sldkslkd hayır da cs yi 3 4 e sarkıtamayız ama tezi sarkıtırız slkdsldk bakalım ya lskdsldk
-  // bence okay geliriz bugün geldik olum 3 de ona lskdsldk 3 3 bence de
-  // son plan 22-24 tez 00-03 cs 04-07 tez muazzam 7 saat lan müthiş aynen sdlkfsdflsdkgsdl nasıl lan 3 olum cs sarkar 12 den 12.30 a filan aynen
-  // ması llan ldskfslfk napıyonuz olum ha çok yiyosun doğru sldksldk doğru doğru
-  // bence 3de girip 3.5 a kadar çalışı mola vermek çok mantıksız olum parçalanıyo 4 de girip laps 3 saat gömeriz aralıksız
-  // tamam o zaman yatak ksdlfksfdl iyi geceler kdsfksdl ben dedim ldkslgj
-  getQuestion() {
-    this.setState((state) => ({
-      questionsArray: [
-        ...state.questionsArray,
-        {
-          id: ID(),
-          data: "En yakınındaki mavi objeyi bul!",
-          answers: [],
-        },
-      ],
-    }));
+  getQuestion(question) {
+    console.log("Get question çalıştı", question);
+    question
+      ? (() => {
+          setTimeout(() => {
+            this.setState((state) => ({
+              questionsArray: [
+                ...state.questionsArray,
+                {
+                  ...question,
+                  userAnswers: [],
+                },
+              ],
+            }));
+          }, 100);
+        })()
+      : honeymishAPI
+          .getQuestion()
+          .then((res) => {
+            console.log(res.data);
+            this.setState((state) => ({
+              questionsArray: [
+                ...state.questionsArray,
+                {
+                  ...res.data,
+                  userAnswers: [],
+                },
+              ],
+            }));
+          })
+          .catch((err) => {
+            console.log("Get Question Error");
+            console.log(err);
+          });
   }
 
   renderAnswers(answersArray) {
     return answersArray.map((answer) =>
       // condition = answer.userId === this.props.userId
-      false ? (
+      answer.user === "me" ? (
         <View
           key={answer.data.uri}
           style={[
@@ -210,7 +293,20 @@ export default class GameScreen extends Component {
             },
           ]}
         >
-          {answer.result ? (
+          {answer.result === "processing" ? (
+            <View
+              style={{
+                width: 25,
+                height: 25,
+                borderRadius: 12.5,
+                backgroundColor: Colors.mainColor,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <ActivityIndicator size="small" color="#fff" />
+            </View>
+          ) : answer.result ? (
             <AntDesign name="checkcircle" color="green" size={25} />
           ) : (
             <AntDesign name="closecircle" color="red" size={25} />
@@ -248,7 +344,20 @@ export default class GameScreen extends Component {
             ]}
             source={{ uri: answer.data.uri }}
           />
-          {answer.result ? (
+          {answer.result === "processing" ? (
+            <View
+              style={{
+                width: 25,
+                height: 25,
+                borderRadius: 12.5,
+                backgroundColor: Colors.mainColor,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <ActivityIndicator size="small" color="#fff" />
+            </View>
+          ) : answer.result ? (
             <AntDesign name="checkcircle" color="green" size={25} />
           ) : (
             <AntDesign name="closecircle" color="red" size={25} />
@@ -260,22 +369,39 @@ export default class GameScreen extends Component {
 
   renderGame(questionsArray) {
     return questionsArray.map((question) => (
-      <React.Fragment key={question.id}>
+      <React.Fragment key={question._id}>
         <View style={s.questionContainer}>
-          <Text style={s.questionTextStyle}>
-            En yakınındaki mavi objeyi bul!
-          </Text>
+          <Text style={s.questionTextStyle}>{question.data}</Text>
         </View>
-        {this.renderAnswers(question.answers)}
+        {this.renderAnswers(question.userAnswers)}
       </React.Fragment>
     ));
   }
 
+  getWinString() {
+    const { myScore, opponentScore } = this.state;
+    switch (true) {
+      case myScore === opponentScore:
+        return "tie";
+      case myScore > opponentScore:
+        return true;
+      case myScore < opponentScore:
+        return false;
+    }
+  }
+
   onTimeEnded() {
-    this.props.navigation.navigate("Result", {
+    const { navigation, route, user } = this.props;
+    const { myScore, opponentScore } = this.state;
+    this.disconnect(false);
+
+    navigation.navigate("Result", {
       data: this.state,
-      win: 0, // opponentScore > myScore
-      online: this.props.route.params.online,
+      win: this.getWinString(),
+      online: route.params.online,
+      user,
+      opponent: route.params.opponent,
+      scores: [myScore, opponentScore],
     });
   }
 
@@ -284,19 +410,26 @@ export default class GameScreen extends Component {
   }
 
   render() {
-    const { online } = this.props.route.params;
+    const { online, opponent } = this.props.route.params;
+    const { user } = this.props;
+    const { myScore, opponentScore } = this.state;
     return (
       <BG>
         <View style={s.container}>
           <Header
             back
-            onBackPress={() => this.props.navigation.goBack()}
-            score={online ? null : this.state.score}
+            onBackPress={() => {
+              this.props.navigation.navigate("Home");
+            }}
+            score={online ? null : this.state.practiceScore}
           />
           <View style={s.mainContainer}>
             <View style={s.timeContainer}>
               <RemainingTime
+                user={user}
+                opponent={opponent}
                 online={online}
+                scores={[myScore, opponentScore]}
                 ref={(ref) => (this.timer = ref)}
                 onTimeEnded={() => this.onTimeEnded()}
               />
@@ -309,8 +442,8 @@ export default class GameScreen extends Component {
 
             <View style={s.buttonContainer}>
               <CustomButton
-                name="Kamera'yı Aç"
-                onPress={() => this.openCamera()}
+                name={this.state.pending ? "Please wait!" : "Open Camera"}
+                onPress={() => (this.state.pending ? null : this.openCamera())}
               />
             </View>
           </View>
@@ -373,3 +506,18 @@ const s = {
     color: "#fff",
   },
 };
+
+const mapStateToProps = (state) => {
+  return {
+    user: state.auth.user,
+  };
+};
+
+const mapDispatchToProps = (dispatch) =>
+  bindActionCreators(
+    {
+      logoutUser: logoutUserAction,
+    },
+    dispatch
+  );
+export default connect(mapStateToProps, mapDispatchToProps)(GameScreen);

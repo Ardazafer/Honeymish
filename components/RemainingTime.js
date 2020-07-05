@@ -4,7 +4,7 @@ import ProfilePicture from "./ProfilePicture";
 import Colors from "../constants/Colors";
 
 const barColor = "#fff";
-const startingTime = 5;
+const startingTime = 90;
 
 export default class RemainingTime extends Component {
   constructor() {
@@ -30,7 +30,6 @@ export default class RemainingTime extends Component {
 
   decreaseTime() {
     const newTimeoutId = setTimeout(() => {
-      console.log(this.state.time);
       if (this.state.time > 0) {
         this.setState((state) => ({ time: state.time - 1 }));
         this.decreaseTime();
@@ -45,9 +44,8 @@ export default class RemainingTime extends Component {
   }
 
   render() {
-    const { online } = this.props;
+    const { online, user, opponent, scores } = this.props;
     const { time } = this.state;
-
     return online ? (
       <View
         style={[
@@ -58,7 +56,7 @@ export default class RemainingTime extends Component {
         ]}
       >
         <View>
-          <ProfilePicture size={60} name="Arda Zafer İbin" />
+          <ProfilePicture photo={user.profilePic} size={60} name={user.name} />
         </View>
         <View
           style={{
@@ -68,12 +66,23 @@ export default class RemainingTime extends Component {
           }}
         >
           <Text style={s.textStyle}>{time}</Text>
-          <View style={[s.timerBar, { width: time * 4 + 2 }]} />
+          <View
+            style={[
+              s.timerBar,
+              {
+                width: 180 * (time / startingTime),
+              },
+            ]}
+          />
 
-          <Text style={s.textStyle}>0 : 0</Text>
+          <Text style={s.textStyle}>{`${scores[0]} : ${scores[1]}`}</Text>
         </View>
         <View>
-          <ProfilePicture size={60} name="Ömer Faruk Fildişi" />
+          <ProfilePicture
+            photo={opponent.profilePic}
+            size={60}
+            name={opponent.name}
+          />
         </View>
       </View>
     ) : (
@@ -85,14 +94,14 @@ export default class RemainingTime extends Component {
           },
         ]}
       >
-        <ProfilePicture size={60} />
+        <ProfilePicture photo={user.profilePic} size={60} />
         <View style={s.timerBarContainer}>
           <View
             style={[
               s.timerBar,
               {
                 marginLeft: 30,
-                width: this.state.time * 5 + 30,
+                width: 260 * (time / startingTime),
               },
             ]}
           />

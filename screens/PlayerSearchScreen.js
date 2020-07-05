@@ -4,33 +4,72 @@ import ProfilePicture from "../components/ProfilePicture";
 import BG from "../components/BG";
 import Colors from "../constants/Colors";
 import Header from "../components/Header";
+import io from "socket.io-client";
+import { connect } from "react-redux";
+import showFlashMessage from "../helpers/showFlashMessage";
 
-export default class PlayerSearchScreen extends Component {
+let socket;
+const baseURL = "https://honeymish.oa.r.appspot.com";
+
+class PlayerSearchScreen extends Component {
   constructor() {
     super();
-    this.state = { searching: true, time: 3 };
+    this.state = {
+      searching: true,
+      time: 3,
+      timeoutId: null,
+      opponent: null,
+      question: null,
+    };
   }
 
   componentDidMount() {
-    setTimeout(() => {
-      this.setState({ searching: false });
-      this.decreaseTime();
-    }, 5000);
+    socket = io(baseURL);
+
+    socket.emit("addToQueue", { user: this.props.user });
+
+    socket.on("gameFound", ({ room, user, question }) => {
+      this.setState({ searching: false, opponent: user, question });
+      this.decreaseTime(room, socket);
+    });
+    const newTimeoutId = setTimeout(() => {
+      if (this.state.searching) {
+        showFlashMessage(
+          "Search Failed!",
+          "Sorry, there is no one searching for a game now :("
+        );
+        this.props.navigation.goBack();
+      }
+    }, 1000 * 20);
+    this.setState({ timeoutId: newTimeoutId });
   }
 
-  decreaseTime() {
+  componentWillUnmount() {
+    clearTimeout(this.state.timeoutId);
+    socket.emit("disconnect");
+    socket.off();
+    socket.close();
+  }
+  decreaseTime(room, socket) {
     setTimeout(() => {
       if (this.state.time > 1) {
         this.setState((state) => ({ time: state.time - 1 }));
-        this.decreaseTime();
+        this.decreaseTime(room, socket);
       } else {
-        this.props.navigation.navigate("Game", { online: true });
+        this.props.navigation.navigate("Game", {
+          online: true,
+          room,
+          socket,
+          question: this.state.question,
+          opponent: this.state.opponent,
+        });
       }
     }, 1000);
   }
 
   render() {
-    const { searching, time } = this.state;
+    const { searching, time, opponent } = this.state;
+    const { user } = this.props;
     return (
       <BG>
         <View style={s.container}>
@@ -47,10 +86,16 @@ export default class PlayerSearchScreen extends Component {
           />
           <View style={s.mainContainer}>
             <View style={s.profilePicturesContainer}>
-              <ProfilePicture size={100} name="Arda Zafer İbin" fullName />
+              <ProfilePicture
+                photo={user.profilePic}
+                size={100}
+                name={user.name}
+                fullName
+              />
               <Text style={s.textStyle}>vs.</Text>
               <ProfilePicture
-                name={" "}
+                photo={!searching ? opponent.profilePic : null}
+                name={!searching ? opponent.name : " "}
                 searching={searching}
                 borderColor={"#872887"}
                 size={100}
@@ -99,3 +144,10 @@ const s = {
     color: "#fff",
   },
 };
+
+const mapStateToProps = (state) => {
+  return {
+    user: state.auth.user,
+  };
+};
+export default connect(mapStateToProps, null)(PlayerSearchScreen);

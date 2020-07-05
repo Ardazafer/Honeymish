@@ -2,25 +2,21 @@ import React, { Component } from "react";
 import { Text, View, BackHandler, StyleSheet } from "react-native";
 import BG from "../../components/BG";
 import ProfilePicture from "../../components/ProfilePicture";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import CustomButton from "../../components/CustomButton";
 import { TouchableWithoutFeedback } from "react-native-gesture-handler";
 
-export default class HomeScreen extends Component {
-  /** 
-   * TODO: Fix This!!
-   * 
-   * componentDidMount() {
+import { connect } from "react-redux";
+
+class HomeScreen extends Component {
+  componentDidMount() {
     BackHandler.addEventListener("hardwareBackPress", this.handleBackButton);
-  }
-  componentWillUnmount() {
-    BackHandler.removeEventListener("hardwareBackPress", this.handleBackButton);
   }
   handleBackButton = () => {
     return true;
-  }; */
-
+  };
   render() {
+    const { profilePic, name, practiceScore, gold } = this.props.user;
     const { navigation } = this.props;
     const { navigate } = navigation;
 
@@ -28,37 +24,65 @@ export default class HomeScreen extends Component {
       <BG>
         <View style={s.container}>
           <View style={s.mainContainer}>
-            <View style={s.logoContainer}></View>
-            <View style={s.playerInfoContainer}>
+            <View style={s.logoContainer}>
+              <Text style={s.logoTextStyle}>Honeymish</Text>
+            </View>
+            <TouchableWithoutFeedback
+              style={s.playerInfoContainer}
+              onPress={() => {
+                navigate("Profile", {});
+              }}
+            >
               <View style={s.leftContainer}>
-                <TouchableWithoutFeedback
-                  onPress={() => navigate("Profile", {})}
-                >
-                  <ProfilePicture size={80} />
-                </TouchableWithoutFeedback>
+                <ProfilePicture photo={profilePic} size={80} />
               </View>
               <View style={s.rightContainer}>
-                <Text style={s.nameTextStyle}>Arda Zafer İbin</Text>
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <MaterialIcons
-                    name="stars"
-                    size={30}
-                    color={"rgba(0,0,0,0.5)"}
-                  />
-                  <Text style={s.scoreTextStyle}>1205</Text>
+                <Text style={s.nameTextStyle}>{name}</Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      marginRight: 20,
+                    }}
+                  >
+                    <MaterialIcons
+                      name="stars"
+                      size={30}
+                      color={"rgba(0,0,0,0.5)"}
+                    />
+                    <Text style={s.scoreTextStyle}>{practiceScore}</Text>
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <FontAwesome5
+                      name="coins"
+                      size={25}
+                      color={"rgba(0,0,0,0.5)"}
+                    />
+                    <Text style={s.scoreTextStyle}>{gold}</Text>
+                  </View>
                 </View>
               </View>
-            </View>
+            </TouchableWithoutFeedback>
             <View style={s.buttonContainer}>
               <CustomButton
                 name="Play Now!"
-                onPress={() => navigate("Search")}
+                onPress={() => {
+                  navigate("Search");
+                }}
               />
             </View>
             <View style={s.buttonContainer}>
               <CustomButton
                 name="Play Offline"
-                onPress={() => navigate("Game", { online: false })}
+                onPress={() => {
+                  navigate("Game", { online: false });
+                }}
               />
             </View>
           </View>
@@ -82,8 +106,14 @@ const s = {
   logoContainer: {
     width: "100%",
     height: 200,
-    backgroundColor: "white",
     marginBottom: 100,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoTextStyle: {
+    fontFamily: "Bacon-Normal",
+    fontSize: 70,
+    color: "#fff",
   },
   playerInfoContainer: {
     height: 120,
@@ -95,6 +125,7 @@ const s = {
     borderRadius: 10,
   },
   scoreTextStyle: {
+    marginLeft: 5,
     fontSize: 20,
     fontWeight: "bold",
     color: "rgba(0,0,0,0.5)",
@@ -119,3 +150,10 @@ const s = {
     marginTop: 30,
   },
 };
+
+const mapStateToProps = (state) => {
+  return {
+    user: state.auth.user,
+  };
+};
+export default connect(mapStateToProps, null)(HomeScreen);

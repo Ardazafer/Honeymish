@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { Text, View, StyleSheet } from "react-native";
+import { Text, View, StyleSheet, ActivityIndicator } from "react-native";
 import { TouchableWithoutFeedback } from "react-native-gesture-handler";
 
 export default class CustomButton extends Component {
@@ -9,7 +9,11 @@ export default class CustomButton extends Component {
         style={s.mainContainer}
         onPress={this.props.onPress}
       >
-        <Text style={s.textStyle}>{this.props.name}</Text>
+        {this.props.loading ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <Text style={s.textStyle}>{this.props.name}</Text>
+        )}
       </TouchableWithoutFeedback>
     );
   }
